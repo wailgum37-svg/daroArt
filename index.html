@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Planner PWA</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#667eea">
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,Tahoma}
+body{background:#f2f4ff;padding:20px}
+.container{max-width:900px;margin:auto;background:white;border-radius:12px;padding:20px;box-shadow:0 15px 40px rgba(0,0,0,.2)}
+h1{text-align:center;color:#667eea;margin-bottom:20px}
+
+input,select,button{
+  padding:10px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  font-size:1em
+}
+button{
+  background:#667eea;
+  color:white;
+  border:none;
+  cursor:pointer
+}
+button:hover{opacity:.9}
+
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.form button{grid-column:1/3}
+
+.task{
+  background:#f7f7f7;
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:10px;
+  border-left:5px solid #ccc
+}
+.task.active{border-left-color:#667eea;background:#eef1ff}
+.badge{
+  padding:3px 8px;
+  border-radius:12px;
+  font-size:.75em;
+  color:white
+}
+.easy{background:#2ecc71}
+.medium{background:#f1c40f;color:#333}
+.hard{background:#e74c3c}
+
+.task button{margin-top:5px;width:100%}
+
+#pomodoro{text-align:center;margin-top:30px}
+#timer{font-size:3em;color:#667eea}
+.stats{margin-top:20px;background:#fafafa;padding:10px;border-radius:8px}
+.stats div{margin:5px 0}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>📘 Study Planner</h1>
+
+<div class="form">
+<input id="title" placeholder="Task title">
+<input id="date" type="date">
+<select id="difficulty">
+  <option value="easy">🟢 Easy</option>
+  <option value="medium">🟡 Medium</option>
+  <option value="hard">🔴 Hard</option>
+</select>
+<button id="addBtn">➕ Add Task</button>
+</div>
+
+<div id="tasks"></div>
+
+<div id="pomodoro">
+  <div id="timer">25:00</div>
+  <p id="mode">Select a task</p>
+  <button id="start">▶ Start</button>
+  <button id="pause">⏸ Pause</button>
+  <button id="reset">🔄 Reset</button>
+</div>
+
+<div class="stats">
+  <div>🟢 Easy Pomodoros: <span id="sEasy">0</span></div>
+  <div>🟡 Medium Pomodoros: <span id="sMedium">0</span></div>
+  <div>🔴 Hard Pomodoros: <span id="sHard">0</span></div>
+</div>
+</div>
+
+<script>
+// PWA
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js');
+}
+
+// DOM
+const tasksBox=document.getElementById("tasks");
+const timerEl=document.getElementById("timer");
+const modeEl=document.getElementById("mode");
+
+const titleInput=document.getElementById("title");
+const dateInput=document.getElementById("date");
+const diffInput=document.getElementById("difficulty");
+
+const sEasy=document.getElementById("sEasy");
+const sMedium=document.getElementById("sMedium");
+const sHard=document.getElementById("sHard");
+
+let tasks=JSON.parse(localStorage.getItem("tasks")||"[]");
+let active=null;
+let timer=null;
+let time=1500;
+let studying=true;
+
+// Save
+function save(){localStorage.setItem("tasks",JSON.stringify(tasks))}
+
+// Render
+function render(){
+  tasksBox.innerHTML="";
+  tasks.forEach((t,i)=>{
+    const div=document.createElement("div");
+    div.className="task"+(i===active?" active":"");
+    div.innerHTML=`
+      <b>${t.title}</b><br>
+      📅 ${t.date}<br>
+      <span class="badge ${t.difficulty}">${t.difficulty}</span><br>
+      🍅 ${t.pomodoros}
+      <button onclick="selectTask(${i})">🎯 Select</button>
+    `;
+    tasksBox.appendChild(div);
+  });
+  stats();
+}
+
+// Stats
+function stats(){
+  let e=0,m=0,h=0;
+  tasks.forEach(t=>{
+    if(t.difficulty==="easy")e+=t.pomodoros;
+    if(t.difficulty==="medium")m+=t.pomodoros;
+    if(t.difficulty==="hard")h+=t.pomodoros;
+  });
+  sEasy.textContent=e;
+  sMedium.textContent=m;
+  sHard.textContent=h;
+}
+
+// Add task
+document.getElementById("addBtn").onclick=()=>{
+  if(!titleInput.value||!dateInput.value)return alert("Fill all");
+  tasks.push({
+    title:titleInput.value,
+    date:dateInput.value,
+    difficulty:diffInput.value,
+    pomodoros:0
+  });
+  save(); render();
+  titleInput.value="";
+};
+
+// Select
+window.selectTask=i=>{
+  active=i;
+  time=1500;
+  studying=true;
+  modeEl.textContent="Studying: "+tasks[i].title;
+  updateTimer();
+  render();
+};
+
+// Timer
+function updateTimer(){
+  const m=Math.floor(time/60).toString().padStart(2,"0");
+  const s=(time%60).toString().padStart(2,"0");
+  timerEl.textContent=`${m}:${s}`;
+}
+
+document.getElementById("start").onclick=()=>{
+  if(active===null)return alert("Select task");
+  if(timer)return;
+  timer=setInterval(()=>{
+    time--;
+    updateTimer();
+    if(time<=0){
+      clearInterval(timer);
+      timer=null;
+      if(studying){tasks[active].pomodoros++;save();render();}
+      studying=!studying;
+      time=studying?1500:300;
+      modeEl.textContent=studying?"Studying":"Break";
+    }
+  },1000);
+};
+
+document.getElementById("pause").onclick=()=>{clearInterval(timer);timer=null};
+document.getElementById("reset").onclick=()=>{
+  clearInterval(timer);timer=null;
+  time=1500;studying=true;
+  modeEl.textContent="Select a task";
+  updateTimer();
+};
+
+render();updateTimer();
+</script>
+</body>
+</html>
